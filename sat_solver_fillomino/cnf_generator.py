@@ -301,7 +301,7 @@ class CNFGenerator:
                             neighbors = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
                             for nx, ny in neighbors:
                                 if 0 <= nx < max_i and 0 <= ny < max_j and (nx, ny) not in coordinates_of_shape:
-                                    solver.add_clause([-groups_index_max, (nx * max_j * 9 + ny * 9 + 8)])
+                                    solver.add_clause([-groups_index_max, -(nx * max_j * 9 + ny * 9 + 8)])
 
                         groups_index_max += 1
 
@@ -337,7 +337,7 @@ class CNFGenerator:
                             neighbors = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
                             for nx, ny in neighbors:
                                 if 0 <= nx < max_i and 0 <= ny < max_j and (nx, ny) not in coordinates_of_shape:
-                                    solver.add_clause([-(groups_index_max), (nx * max_j * 9 + ny * 9 + 9)])
+                                    solver.add_clause([-(groups_index_max), -(nx * max_j * 9 + ny * 9 + 9)])
 
                         groups_index_max += 1
 
