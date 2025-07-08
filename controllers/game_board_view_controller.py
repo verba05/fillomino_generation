@@ -1,8 +1,7 @@
+import gc
 from queue import Queue
 import random
 import numpy as np
-
-import copy
 
 from numpy.f2py.auxfuncs import throw_error
 from pysat.solvers import Minisat22
@@ -14,11 +13,11 @@ from views.winned_game_view import WinnedGameView
 
 class GameBoardController:
 
-    def __init__(self, view, i, j):
+    def __init__(self, view, i, j, k):
         self.view = view
         self.solution = None
         self.solver = None
-        self.i, self.j = i, j
+        self.i, self.j, self.k = i, j, k
         self.cnf_generator = CNFGenerator()
         self.current_chosen_number = 0
         self.decoded_solution = None
@@ -26,18 +25,16 @@ class GameBoardController:
 
 
     def solve_cnf(self):
-        time_start = time.time()
-        self.solver = self.cnf_generator.generate_cnf(self.i, self.j)
-        time_end = time.time()
-        print("time to create solver: ", time_end - time_start)
 
-        time_start = time.time()
+        time_begin = time.time()
+        self.solver = self.cnf_generator.generate_cnf(self.i, self.j, self.k)
+
         number_of_cells = self.i * self.j
         number_of_rand_cells = 0
         if number_of_cells == 50:
             number_of_rand_cells = 5
         elif number_of_cells == 64:
-            number_of_rand_cells = 6
+            number_of_rand_cells = 7
         elif number_of_cells == 100:
             number_of_rand_cells = 8
         else:
@@ -50,18 +47,16 @@ class GameBoardController:
                 while True:
                     x = np.random.randint(0, self.i)
                     y = np.random.randint(0, self.j)
-                    if x * y in randomised_cells:
+                    if (x, y) in randomised_cells:
                         continue
-                    k = np.random.randint(4, 10)
-                    random_values.append(x * self.j * 9 + y * 9 + k)
-                    randomised_cells.append(x * y)
+                    k = np.random.randint(4, self.k + 1)
+                    random_values.append(x * self.j * self.k + y * self.k + k)
+                    randomised_cells.append((x, y))
                     break
-
             self.solver.solve(assumptions=random_values)
             if self.solver.get_model() is not None:
                 break
-        time_end = time.time()
-        print("time to generate solution", time_end - time_start)
+                time_end = time.time()
 
         self.solution = self.solver.get_model()
 
@@ -70,166 +65,153 @@ class GameBoardController:
             board = []
 
             for element in input:
-                k = element % 9
+                k = element % self.k
                 if k == 0:
-                    k = 9
+                    k = self.k
                 tmp = element - k
-                j = (tmp // 9) % self.j
-                tmp = tmp - (j * 9)
-                i = tmp // (self.j * 9)
+                j = (tmp / self.k) % self.j
+                tmp = tmp - (j * self.k)
+                i = tmp / (self.j * self.k)
                 board.append((i, j, k))
 
-            print("board", board)
 
             return board
         elif isinstance(input, int):
-            k = input % 9
+            k = input % self.k
             if k == 0:
-                k = 9
+                k = self.k
             tmp = input - k
-            j = (tmp // 9) % self.j
-            tmp = tmp - (j * 9)
-            i = tmp // (self.j * 9)
+            j = (tmp // self.k) % self.j
+            tmp = tmp - (j * self.k)
+            i = tmp // (self.j * self.k)
             return (i, j, k)
         else:
             raise ValueError("Illegal input")
 
 
     def generate_board(self):
-
         self.solve_cnf()
 
         def isTrue(value):
             return value > 0
 
-        original_solution = list(filter(isTrue, self.solution[:self.i * self.j * 9]))
+        original_solution = list(filter(isTrue, self.solution[:self.i * self.j * self.k]))
 
         self.decoded_solution = self.decode(original_solution)
-        board = [[k, False, False] for x, y, k in self.decoded_solution]
+        board = [[k, False] for x, y, k in self.decoded_solution]
         queue = Queue()
         polyominos = []
         polyominos_counter = 0
-
+        cell_to_polyomino = {}
         for i in range(self.i):
             for j in range(self.j):
                 if board[i * self.j + j][1] == False:
                     queue.put((i, j))
+                    cell_to_polyomino[(i, j)] = polyominos_counter
                     polyominos.append([(i, j)])
                     board[i * self.j + j][1] = True
                     while not queue.empty():
 
                         x, y = queue.get()
+                        cell_to_polyomino[(x, y)] = polyominos_counter
                         current_cell_index = x * self.j + y
-                        if x > 0 and board[current_cell_index][0] == board[(x - 1) * self.j + y][0] and board[(x - 1) * self.j + y][1] == False:
-
+                        if x > 0 and board[current_cell_index][0] == board[(x - 1) * self.j + y][0] and \
+                                board[(x - 1) * self.j + y][1] == False:
                             polyominos[polyominos_counter].append((x - 1, y))
                             board[(x - 1) * self.j + y][1] = True
                             queue.put((x - 1, y))
 
-                        if x < self.i - 1 and board[current_cell_index][0] == board[(x + 1) * self.j + y][0] and board[(x + 1) * self.j + y][1] == False:
+                        if x < self.i - 1 and board[current_cell_index][0] == board[(x + 1) * self.j + y][0] and \
+                                board[(x + 1) * self.j + y][1] == False:
                             polyominos[polyominos_counter].append((x + 1, y))
                             board[(x + 1) * self.j + y][1] = True
                             queue.put((x + 1, y))
 
-                        if y > 0 and board[current_cell_index][0] == board[x * self.j + y - 1][0] and board[x * self.j + y - 1][1] == False:
+                        if y > 0 and board[current_cell_index][0] == board[x * self.j + y - 1][0] and \
+                                board[x * self.j + y - 1][1] == False:
                             polyominos[polyominos_counter].append((x, y - 1))
                             board[x * self.j + y - 1][1] = True
                             queue.put((x, y - 1))
 
-                        if y < self.j - 1 and board[current_cell_index][0] == board[x * self.j + y + 1][0] and board[x * self.j + y + 1][1] == False:
+                        if y < self.j - 1 and board[current_cell_index][0] == board[x * self.j + y + 1][0] and \
+                                board[x * self.j + y + 1][1] == False:
                             polyominos[polyominos_counter].append((x, y + 1))
                             board[x * self.j + y + 1][1] = True
                             queue.put((x, y + 1))
 
-
                     polyominos_counter += 1
 
-                else:
-                    continue
-
-
-        for i in range(self.i):
-            for j in range(self.j):
-                print(self.decoded_solution[i * self.j + j][2], end="")
-            print()
-
-        cells_on_board = []
-
-        for i in range(len(polyominos)):
-            elements_to_print = None
-            number = len(polyominos[i])
-            if len(polyominos[i]) == 1:
-                elements_to_print = polyominos[i]
-            elif len(polyominos[i]) == 2 or len(polyominos[i]) == 3:
-                elements_to_print = random.sample(polyominos[i], 1)
-            elif len(polyominos[i]) == 4 or len(polyominos[i]) == 5 or len(polyominos[i]) == 6:
-                elements_to_print = random.sample(polyominos[i], random.choice([1,2]))
-            elif len(polyominos[i]) == 7:
-                elements_to_print = random.sample(polyominos[i], random.choice([1,2,3]))
-            else:
-                elements_to_print = random.sample(polyominos[i], random.choice([1,2,3,4]))
-
-            cells_on_board.extend([(x, y, number) for x, y in elements_to_print])
-
-
-
-            for x, y in elements_to_print:
-                self.view.cells[x * self.j + y].setText(str(number))
-                self.view.cells[x * self.j + y].isLocked = True
-                font = self.view.cells[x * self.j + y].font()
-                font.setUnderline(True)
-                self.view.cells[x * self.j + y].setFont(font)
-                board[x * self.j + y][2] = True
-
-
-
-        assumptions_array = [x * self.j * 9 + y * 9 + k for x, y, k in cells_on_board]
-        self.solver.add_clause([-var for var in self.solution[:self.i * self.j * 9]])
         time0 = time.time()
         while True:
-            self.solver.solve(assumptions=assumptions_array)
-            solution = self.solver.get_model()
-            if solution is None:
-                print("success")
-                break
-            else:
-                print("failure")
-                current_solution = list(filter(isTrue, solution[:self.i * self.j * 9]))
-                different_cells = list(set(original_solution) - set(current_solution))
-                while different_cells:
+            isBoardFoundable = True
+            cells_on_board = []
+            polyominos_cells_counters = list(0 for _ in range(len(polyominos)))
+            for i in range(len(polyominos)):
+                elements_to_print = None
+                number = len(polyominos[i])
+                if len(polyominos[i]) == 1:
+                    elements_to_print = polyominos[i]
+                    polyominos_cells_counters[i] = 1
+                elif len(polyominos[i]) == 2 or len(polyominos[i]) == 3:
+                    elements_to_print = random.sample(polyominos[i], 1)
+                    polyominos_cells_counters[i] = 1
+                elif len(polyominos[i]) == 4 or len(polyominos[i]) == 5 or len(polyominos[i]) == 6:
+                    choice = random.choice([1, 2])
+                    elements_to_print = random.sample(polyominos[i], choice)
+                    polyominos_cells_counters[i] = choice
+                else:
+                    choice = random.choice([3, 4])
+                    elements_to_print = random.sample(polyominos[i], choice)
+                    polyominos_cells_counters[i] = choice
 
-                    random_cell = random.choice(different_cells)
-                    decoded_cell = self.decode(random_cell)
-                    if decoded_cell[2] == 2 or decoded_cell[2] == 3:
-                        different_cells.remove(random_cell)
-                        continue
-                    polyomino_index = None
-                    for i in range(len(polyominos)):
-                        if decoded_cell[2] == len(polyominos[i]) and (decoded_cell[0], decoded_cell[1]) in polyominos[i]:
-                            polyomino_index = i
+                cells_on_board.extend([(x, y, number) for x, y in elements_to_print])
+
+            assumptions_array = [x * self.j * self.k + y * self.k + k for x, y, k in cells_on_board]
+            self.solver.add_clause([-var for var in self.solution[:self.i * self.j * self.k]])
+            while True:
+                self.solver.solve(assumptions=assumptions_array)
+                solution = self.solver.get_model()
+
+                if solution is None:
+                    break
+                else:
+                    current_solution = list(filter(isTrue, solution[:self.i * self.j * self.k]))
+                    different_cells = list(set(original_solution) - set(current_solution))
+                    while different_cells:
+                        random_cell = random.choice(different_cells)
+                        decoded_cell = self.decode(random_cell)
+                        if decoded_cell[2] == 2:
+                            different_cells.remove(random_cell)
+                            continue
+                        polyomino_index = cell_to_polyomino[(decoded_cell[0], decoded_cell[1])]
+
+                        visible_cells_count = polyominos_cells_counters[polyomino_index]
+                        x, y, number = decoded_cell
+                        if visible_cells_count == number - 1:
+                            different_cells.remove(random_cell)
+                        else:
+                            cells_on_board.append(decoded_cell)
+                            polyominos_cells_counters[polyomino_index] += 1
+                            assumptions_array.append(random_cell)
+                            break
+                        if different_cells == []:
+                            print("problem")
+                            isBoardFoundable = False
                             break
 
-                    visible_cells_count = 0
-                    for x, y in polyominos[polyomino_index]:
-                        if board[x * self.j + y][2]:
-                            visible_cells_count += 1
+                if not isBoardFoundable:
+                    break
 
-                    x, y, number = decoded_cell
+            if isBoardFoundable:
+                break
 
-                    if visible_cells_count == number - 1:
-                        different_cells.remove(random_cell)
-                    else:
-                        cells_on_board.append(decoded_cell)
-                        board[x * self.j + y][2] = True
-                        self.view.cells[x * self.j + y].setText(str(decoded_cell[2]))
-                        font = self.view.cells[x * self.j + y].font()
-                        font.setUnderline(True)
-                        self.view.cells[x * self.j + y].setFont(font)
-                        self.view.cells[x * self.j + y].isLocked = True
-                        assumptions_array.append(random_cell)
-                        break
-        print(self.decode(assumptions_array))
-        print(len(assumptions_array))
+
+        for x, y, number in cells_on_board:
+            self.view.cells[x * self.j + y].setText(str(number))
+            self.view.cells[x * self.j + y].isLocked = True
+            font = self.view.cells[x * self.j + y].font()
+            font.setUnderline(True)
+            self.view.cells[x * self.j + y].setFont(font)
         self.setBoardCellsView()
         self.beginning_time = time.time()
 
@@ -246,12 +228,16 @@ class GameBoardController:
             for i in range (self.i * self.j):
                 if self.view.cells[i].text() == "" or self.decoded_solution[i][2] != int(self.view.cells[i].text()):
                     return
-
-            self.view.winned_game_view = WinnedGameView(time.time() - self.beginning_time)
-            self.view.winned_game_view.resize(self.view.size())
-            self.view.winned_game_view.move(self.view.pos())
-            self.view.winned_game_view.show()
-            self.view.close()
+            old_view = self.view
+            self.view = WinnedGameView(time.time() - self.beginning_time)
+            self.view.setFixedSize(old_view.size())
+            self.view.move(old_view.pos())
+            self.view.show()
+            old_view.setParent(None)
+            old_view.deleteLater()
+            old_view.close()
+            del old_view
+            gc.collect()
 
     def setBoardCellsView(self):
         numberStyleMap = {

@@ -1,37 +1,31 @@
 import ast
-import time
 
 from pysat.solvers import Minisat22
 
-
 class CNFGenerator:
 
-    def normalize(self, polyomino):
-        min_x = min(square[0] for square in polyomino)
-        min_y = min(square[1] for square in polyomino)
-        return sorted([(square[0] - min_x, square[1] - min_y) for square in polyomino])
-
-
+    def normalize_polyomino(self, polyomino):
+        min_x = min(cell[0] for cell in polyomino)
+        min_y = min(cell[1] for cell in polyomino)
+        return tuple(sorted([(cell[0] - min_x, cell[1] - min_y) for cell in polyomino]))
 
     def generate_polyominoes(self, n):
+        polyominoes = set()
+        def generate_next_cell(polyomino, n, k):
+            if k == n:
+                polyomino = self.normalize_polyomino(polyomino)
+                polyominoes.add(polyomino)
 
-        def generate(polyomino, remaining):
-            if remaining == 0:
-                normalized = tuple(self.normalize(polyomino))
-                if normalized not in unique_polyominoes:
-                    unique_polyominoes.add(normalized)
-                    polyominoes.append(polyomino)
-                return
+            else:
+                neighbours = [(-1, 0),(1, 0),(0, -1), (0, 1)]
+                for cell in polyomino:
+                    for dx, dy in neighbours:
+                        x = cell[0] + dx
+                        y = cell[1] + dy
+                        if (x, y) not in polyomino:
+                            generate_next_cell(polyomino + [(x, y)], n, k + 1)
 
-            for cell in polyomino:
-                for x, y in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                    new_cell = (cell[0] + x, cell[1] + y)
-                    if new_cell not in polyomino:
-                        generate(polyomino + [new_cell], remaining - 1)
-
-        polyominoes = []
-        unique_polyominoes = set()
-        generate([(0, 0)], n - 1)
+        generate_next_cell([(0,0)],n,1)
         return polyominoes
 
     def can_shape_be_placed(self, shape, center_i, center_j, max_i, max_j):
@@ -42,320 +36,103 @@ class CNFGenerator:
                 return False
         return True
 
-
-
-
-
-    def generate_cnf(self, max_i, max_j):
+    def generate_cnf(self, max_i, max_j, max_k):
         solver = Minisat22()
-
         for i in range(max_i):
             for j in range(max_j):
                 clause = []
-                for k in range(1, 10):
-                    clause.append(i * max_j * 9 + j * 9 + k)
+                for k in range(1, max_k+1):
+                    clause.append(i * max_j * max_k + j * max_k + k)
                 solver.add_clause(clause)
-                for k in range(1, 10):
-                    for l in range(1, 10):
-                        if k != l:
-                            solver.add_clause([-(i * max_j * 9 + j * 9 + k), -(i * max_j * 9 + j * 9 + l)])
+                for k in range(1, max_k+1):
+                    for l in range(k+1, max_k+1):
+                        solver.add_clause([-(i * max_j * max_k + j * max_k + k), -(i * max_j * max_k + j * max_k + l)])
                 clause.clear()
 
         for i in range(max_i):
             for j in range(max_j):
                 if i > 0:
-                    solver.add_clause([-(i * max_j * 9 + j * 9 + 1), -((i - 1) * max_j * 9 + j * 9 + 1)])
+                    solver.add_clause([-(i * max_j * max_k + j * max_k + 1), -((i - 1) * max_j * max_k + j * max_k + 1)])
                 if i < max_i-1:
-                    solver.add_clause([-(i * max_j * 9 + j * 9 + 1),  -((i + 1) * max_j * 9 + j * 9 + 1)])
+                    solver.add_clause([-(i * max_j * max_k + j * max_k + 1),  -((i + 1) * max_j * max_k + j * max_k + 1)])
                 if j > 0:
-                    solver.add_clause([-(i * max_j * 9 + j * 9 + 1), -(i * max_j * 9 + (j - 1) * 9 + 1)])
+                    solver.add_clause([-(i * max_j * max_k + j * max_k + 1), -(i * max_j * max_k + (j - 1) * max_k + 1)])
                 if j < max_j-1:
-                    solver.add_clause([-(i * max_j * 9 + j * 9 + 1), -(i * max_j * 9 + (j + 1) * 9 + 1)])
+                    solver.add_clause([-(i * max_j * max_k + j * max_k + 1), -(i * max_j * max_k + (j + 1) * max_k + 1)])
 
-        for i in range(max_i):
-            for j in range(max_j):
+
+        support_variable = max_i * max_j * max_k + 1
+        for k in range(2, 6):
+            shapes = self.generate_polyominoes(k)
+            cell_in_groups = {}
+            for i in range(max_i):
+                for j in range(max_j):
+                    for shape in shapes:
+                        if self.can_shape_be_placed(shape, i, j, max_i, max_j):
+                            coordinates_of_shape = [(x + i, y + j) for x, y in shape]
+                            for x, y in coordinates_of_shape:
+                                solver.add_clause([-(support_variable), (x * max_j * max_k + y * max_k + k)])
+
+                                if (x, y) not in cell_in_groups:
+                                    cell_in_groups[(x, y)] = []
+
+                                cell_in_groups[(x, y)].append(support_variable)
+
+                                neighbors = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+                                for dx, dy in neighbors:
+                                    if 0 <= dx < max_i and 0 <= dy < max_j and (dx, dy) not in coordinates_of_shape:
+                                        solver.add_clause([-(support_variable), -(dx * max_j * max_k + dy * max_k + k)])
+
+                            support_variable += 1
+
+            for (i, j), groups in cell_in_groups.items():
                 clause = []
-                clause.append(-(i * max_j * 9 + j * 9 + 2))
-                if i > 0:
-                    clause.append((i - 1) * max_j * 9 + j * 9 + 2)
-                if i < max_i-1:
-                    clause.append((i + 1) * max_j * 9 + j * 9 + 2)
-                if j > 0:
-                    clause.append(i * max_j * 9 + (j - 1) * 9 + 2)
-                if j < max_j-1:
-                    clause.append(i * max_j * 9 + (j + 1) * 9 + 2)
+                clause.append(-(i * max_j * max_k + j * max_k + k))
+                for group in groups:
+                    clause.append(group)
                 solver.add_clause(clause)
-                for m in range(1, len(clause)):
-                    for n in range(m + 1, len(clause)):
-                        solver.add_clause([-(clause[n]), -(clause[m])])
-                        solver.add_clause([-(clause[m]) , -(clause[n])])
                 clause.clear()
-
-
-
-
-
-        shapes = self.generate_polyominoes(3)
-        support_variable = (max_i * max_j * 9 + max_j * 9 + 9) * 2 + 1
-        cell_in_groups = {}
-        for i in range(max_i):
-            for j in range(max_j):
-                for shape in shapes:
-                    if self.can_shape_be_placed(shape, i, j, max_i, max_j):
-                        for coordinates in shape:
-                            solver.add_clause([-(support_variable), ((i + coordinates[0]) * max_j * 9 + (j + coordinates[1]) * 9 + 3)])
-
-                        coordinates_of_shape = [(x + i, y + j) for x, y in shape]
-
-                        for x, y in coordinates_of_shape:
-
-                            if (x, y) not in cell_in_groups:
-                                cell_in_groups[(x, y)] = []
-
-                            cell_in_groups[(x, y)].append(support_variable)
-
-                            neighbors = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
-                            for dx, dy in neighbors:
-                                if 0 <= dx < max_i and 0 <= dy < max_j and (dx, dy) not in coordinates_of_shape:
-                                    solver.add_clause([-(support_variable) , -(dx * max_j * 9 + dy * 9 + 3)])
-
-                        support_variable += 1
-
-        for (i, j), groups in cell_in_groups.items():
-            clause = []
-            clause.append(-(i * max_j * 9 + j * 9 + 3))
-            for group in groups:
-                clause.append(group)
-            solver.add_clause(clause)
-            clause.clear()
-
-
-        shapes_of_4 = self.generate_polyominoes(4)
-        cell_in_groups = {}
-
-        for i in range(max_i):
-            for j in range(max_j):
-                for shape in shapes_of_4:
-                    if self.can_shape_be_placed(shape, i, j, max_i, max_j):
-                        for coordinates in shape:
-                            solver.add_clause([-support_variable, ((i + coordinates[0]) * max_j * 9 + (j + coordinates[1]) * 9 + 4)])
-
-
-                        coordinates_of_shape = [(x + i, y + j) for x, y in shape]
-
-                        for x, y in coordinates_of_shape:
-
-                            if (x, y) not in cell_in_groups:
-                                cell_in_groups[(x, y)] = []
-
-                            cell_in_groups[(x, y)].append(support_variable)
-
-                            neighbors = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
-                            for dx, dy in neighbors:
-                                if 0 <= dx < max_i and 0 <= dy < max_j and (dx, dy) not in coordinates_of_shape:
-                                    solver.add_clause([-support_variable, -(dx * max_j * 9 + dy * 9 + 4)])
-
-                        support_variable += 1
-
-        for (i, j), groups in cell_in_groups.items():
-            clause = []
-            clause.append(-(i * max_j * 9 + j * 9 + 4))
-            for group in groups:
-                clause.append(group)
-            solver.add_clause(clause)
-            clause.clear()
-
-
-        shapes_of_5 = self.generate_polyominoes(5)
-        cell_in_groups = {}
-
-        for i in range(max_i):
-            for j in range(max_j):
-                for shape in shapes_of_5:
-                    if self.can_shape_be_placed(shape, i, j, max_i, max_j):
-                        for coordinates in shape:
-                            solver.add_clause([-support_variable,  (i + coordinates[0]) * max_j * 9 + (j + coordinates[1]) * 9 + 5])
-
-                        coordinates_of_shape = [(x + i, y + j) for x, y in shape]
-
-                        for x, y in coordinates_of_shape:
-
-                            if (x, y) not in cell_in_groups:
-                                cell_in_groups[(x, y)] = []
-
-                            cell_in_groups[(x, y)].append(support_variable)
-
-                            neighbors = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
-                            for nx, ny in neighbors:
-                                if 0 <= nx < max_i and 0 <= ny < max_j and (nx, ny) not in coordinates_of_shape:
-                                    solver.add_clause([-support_variable, -(nx * max_j * 9 + ny * 9 + 5)])
-
-                        support_variable += 1
-
-        for (i, j), groups in cell_in_groups.items():
-            clause = []
-            clause.append(-(i * max_j * 9 + j * 9 + 5))
-            for group in groups:
-                clause.append(group)
-            solver.add_clause(clause)
-            clause.clear()
 
         polyominos_file = open("polyominos.txt", "r")
-        number_of_polyominoes = int(polyominos_file.readline())
-        shapes = []
-        for i in range(number_of_polyominoes):
-            shapes.append(ast.literal_eval(polyominos_file.readline()))
-        cell_in_groups = {}
+        for k in range(6, max_k + 1):
+            number_of_polyominoes = int(polyominos_file.readline())
+            shapes = []
+            for i in range(number_of_polyominoes):
+                shapes.append(ast.literal_eval(polyominos_file.readline()))
+            cell_in_groups = {}
 
-        for i in range(max_i):
-            for j in range(max_j):
-                for shape in shapes:
-                    if self.can_shape_be_placed(shape, i, j, max_i, max_j):
-                        for coordinates in shape:
-                            solver.add_clause([-support_variable,((i + coordinates[0]) * max_j * 9 + (j + coordinates[1]) * 9 + 6)])
+            for i in range(max_i):
+                for j in range(max_j):
+                    for shape in shapes:
+                        if self.can_shape_be_placed(shape, i, j, max_i, max_j):
+                            for coordinates in shape:
+                                solver.add_clause([-support_variable,
+                                                   ((i + coordinates[0]) * max_j * max_k + (j + coordinates[1]) * max_k + k)])
 
-                        coordinates_of_shape = [(x + i, y + j) for x, y in shape]
+                            coordinates_of_shape = [(x + i, y + j) for x, y in shape]
 
-                        for x, y in coordinates_of_shape:
+                            for x, y in coordinates_of_shape:
 
-                            if (x, y) not in cell_in_groups:
-                                cell_in_groups[(x, y)] = []
+                                if (x, y) not in cell_in_groups:
+                                    cell_in_groups[(x, y)] = []
 
-                            cell_in_groups[(x, y)].append(support_variable)
+                                cell_in_groups[(x, y)].append(support_variable)
 
-                            neighbors = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
-                            for nx, ny in neighbors:
-                                if 0 <= nx < max_i and 0 <= ny < max_j and (nx, ny) not in coordinates_of_shape:
-                                    solver.add_clause([-support_variable, -(nx * max_j * 9 + ny * 9 + 6)])
+                                neighbors = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+                                for nx, ny in neighbors:
+                                    if 0 <= nx < max_i and 0 <= ny < max_j and (nx, ny) not in coordinates_of_shape:
+                                        solver.add_clause([-support_variable, -(nx * max_j * max_k + ny * max_k + k)])
 
-                        support_variable += 1
+                            support_variable += 1
 
-        for (i, j), groups in cell_in_groups.items():
-            clause = []
-            clause.append(-(i * max_j * 9 + j * 9 + 6))
-            for group in groups:
-                clause.append(group)
-            solver.add_clause(clause)
-            clause.clear()
-
-        number_of_polyominoes = int(polyominos_file.readline())
-        shapes = []
-        for i in range(number_of_polyominoes):
-            shapes.append(ast.literal_eval(polyominos_file.readline()))
-        cell_in_groups = {}
-
-        # shapes = self.generate_polyominoes(7)
-
-        for i in range(max_i):
-            for j in range(max_j):
-                for shape in shapes:
-                    if self.can_shape_be_placed(shape, i, j, max_i, max_j):
-                        for coordinates in shape:
-                            solver.add_clause([-support_variable, ((i + coordinates[0]) * max_j * 9 + (j + coordinates[1]) * 9 + 7)])
-
-                        coordinates_of_shape = [(x + i, y + j) for x, y in shape]
-
-                        for x, y in coordinates_of_shape:
-
-                            if (x, y) not in cell_in_groups:
-                                cell_in_groups[(x, y)] = []
-
-                            cell_in_groups[(x, y)].append(support_variable)
-
-                            neighbors = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
-                            for nx, ny in neighbors:
-                                if 0 <= nx < max_i and 0 <= ny < max_j and (nx, ny) not in coordinates_of_shape:
-                                    solver.add_clause([-support_variable, -(nx * max_j * 9 + ny * 9 + 7)])
-
-                        support_variable += 1
-
-        for (i, j), groups in cell_in_groups.items():
-            clause = []
-            clause.append(-(i * max_j * 9 + j * 9 + 7))
-            for group in groups:
-                clause.append(group)
-            solver.add_clause(clause)
-            clause.clear()
-
-        number_of_polyominoes = int(polyominos_file.readline())
-        shapes = []
-        for i in range(number_of_polyominoes):
-            shapes.append(ast.literal_eval(polyominos_file.readline()))
-        cell_in_groups = {}
-
-        # shapes = self.generate_polyominoes(8)
-
-        for i in range(max_i):
-            for j in range(max_j):
-                for shape in shapes:
-                    if self.can_shape_be_placed(shape, i, j, max_i, max_j):
-                        for coordinates in shape:
-                            solver.add_clause([-support_variable, ((i + coordinates[0]) * max_j * 9 + (j + coordinates[1]) * 9 + 8)])
-                        coordinates_of_shape = [(x + i, y + j) for x, y in shape]
-
-                        for x, y in coordinates_of_shape:
-
-                            if (x, y) not in cell_in_groups:
-                                cell_in_groups[(x, y)] = []
-
-                            cell_in_groups[(x, y)].append(support_variable)
-
-                            neighbors = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
-                            for nx, ny in neighbors:
-                                if 0 <= nx < max_i and 0 <= ny < max_j and (nx, ny) not in coordinates_of_shape:
-                                    solver.add_clause([-support_variable, -(nx * max_j * 9 + ny * 9 + 8)])
-
-                        support_variable += 1
-
-        for (i, j), groups in cell_in_groups.items():
-            clause = []
-            clause.append(-(i * max_j * 9 + j * 9 + 8))
-            for group in groups:
-                clause.append(group)
-            solver.add_clause(clause)
-            clause.clear()
-
-        time0 = time.time()
-        number_of_polyominoes = int(polyominos_file.readline())
-        shapes = []
-        for i in range(number_of_polyominoes):
-            shapes.append(ast.literal_eval(polyominos_file.readline()))
-        cell_in_groups = {}
-        # shapes = self.generate_polyominoes(9)
-
-        for i in range(max_i):
-            for j in range(max_j):
-                for shape in shapes:
-                    if self.can_shape_be_placed(shape, i, j, max_i, max_j):
-                        for coordinates in shape:
-                            solver.add_clause([-(support_variable), ((i + coordinates[0]) * max_j * 9 + (j + coordinates[1]) * 9 + 9)])
-                        coordinates_of_shape = [(x + i, y + j) for x, y in shape]
-
-                        for x, y in coordinates_of_shape:
-
-                            if (x, y) not in cell_in_groups:
-                                cell_in_groups[(x, y)] = []
-
-                            cell_in_groups[(x, y)].append(support_variable)
-
-                            neighbors = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
-                            for nx, ny in neighbors:
-                                if 0 <= nx < max_i and 0 <= ny < max_j and (nx, ny) not in coordinates_of_shape:
-                                    solver.add_clause([-(support_variable), -(nx * max_j * 9 + ny * 9 + 9)])
-
-                        support_variable += 1
-
-        for (i, j), groups in cell_in_groups.items():
-            clause = []
-            clause.append(-(i * max_j * 9 + j * 9 + 9))
-            clause.extend(groups)
-            solver.add_clause(clause)
-        time1 = time.time()
-        print("final clause", time1 - time0)
-        time1 = time.time()
-        print(time1 - time0)
+            for (i, j), groups in cell_in_groups.items():
+                clause = []
+                clause.append(-(i * max_j * max_k + j * max_k + k))
+                for group in groups:
+                    clause.append(group)
+                solver.add_clause(clause)
+                clause.clear()
         polyominos_file.close()
-
 
         return solver
 

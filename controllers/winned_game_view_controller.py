@@ -1,3 +1,4 @@
+import gc
 
 class WinnedGameController:
     def __init__(self, view):
@@ -5,7 +6,12 @@ class WinnedGameController:
 
     def back_to_menu_button_clicked(self):
         from views.menu_view import MenuView
-        self.view.main_menu = MenuView()
-        self.view.main_menu.move(self.view.pos())
-        self.view.main_menu.show()
-        self.view.close()
+        old_view = self.view
+        self.view = MenuView()
+        self.view.move(self.view.pos())
+        self.view.show()
+        old_view.setParent(None)
+        old_view.deleteLater()
+        old_view.close()
+        del old_view
+        gc.collect()

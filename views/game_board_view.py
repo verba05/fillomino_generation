@@ -1,3 +1,4 @@
+
 from PySide6.QtGui import QKeyEvent, Qt
 from PySide6.QtWidgets import (
     QWidget, QGridLayout, QVBoxLayout, QHBoxLayout, QPushButton,
@@ -9,45 +10,42 @@ from widgets.number_selection_cell import NumberSelectionCell
 
 
 class FillominoPuzzleView(QWidget):
-    def __init__(self, max_i, max_j):
+    def __init__(self, max_i, max_j, max_k):
         super().__init__()
 
-        self.controller = GameBoardController(self, max_i, max_j)
+
         self.setWindowTitle("Fillomino Puzzle")
 
         self.window_layout = QVBoxLayout()
         self.board_layout = QGridLayout()
         self.board_layout.setSpacing(0)
 
+        self.controller = GameBoardController(self, max_i, max_j, max_k)
         self.cells = []
-
         for i in range(max_i):
             for j in range(max_j):
                 cell = BoardCell(j, i)
                 self.board_layout.addWidget(cell, i, j)
                 self.cells.append(cell)
-                cell.clicked.connect(lambda checked, cell_index = i * max_j + j : self.controller.boardCellClickedHandler(cell_index))
-
+                cell.clicked.connect(
+                    lambda checked, cell_index=i * max_j + j: self.controller.boardCellClickedHandler(cell_index))
 
         self.selection_number_buttons = []
 
         self.number_selection_layout = QHBoxLayout()
         self.number_selection_layout.setSpacing(0)
         self.number_selection_layout.setContentsMargins(0, 0, 0, 0)
-        for i in range(2, 10):
+        for i in range(2, max_k + 1):
             button = NumberSelectionCell()
             button.setText(str(i))
-            button.clicked.connect(lambda checked, number = i : self.controller.numberSelectionChangeHandler(number))
-            spacing = (max_j - 8) / 2
+            button.clicked.connect(lambda checked, number=i: self.controller.numberSelectionChangeHandler(number))
             self.number_selection_layout.addWidget(button)
             self.selection_number_buttons.append(button)
 
         self.window_layout.addLayout(self.board_layout)
         self.window_layout.addLayout(self.number_selection_layout)
 
-
-
-        self.controller.generate_board()
+        time = self.controller.generate_board()
         self.selection_number_buttons[0].changeState()
         self.setFixedSize(self.sizeHint())
 

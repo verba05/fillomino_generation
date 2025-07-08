@@ -1,3 +1,5 @@
+import gc
+
 from PySide6.QtCore import QTimer
 
 from views.loading_view import LoadingView
@@ -8,9 +10,14 @@ class MenuController:
         self.view = view
 
     def start_button_clicked(self):
-        self.view.loading_view = LoadingView(self.view.board_size_menu.currentIndex())
-        self.view.loading_view.move(self.view.pos())
-        self.view.loading_view.resize(self.view.size())
-        self.view.loading_view.show()
-        self.view.close()
+        old_view = self.view
+        self.view = LoadingView(self.view.board_size_menu.currentIndex(), self.view.max_size_polyomino.currentIndex())
+        self.view.move(self.view.pos())
+        self.view.resize(self.view.size())
+        self.view.show()
+        old_view.setParent(None)
+        old_view.deleteLater()
+        old_view.close()
+        del old_view
+        gc.collect()
 

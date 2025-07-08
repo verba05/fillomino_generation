@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QWidget, QVBoxLayout, QPushButton, QHBoxLayout
+from PySide6.QtWidgets import QLabel, QWidget, QVBoxLayout, QPushButton
 
 from controllers.winned_game_view_controller import WinnedGameController
 

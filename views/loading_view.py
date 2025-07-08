@@ -5,9 +5,9 @@ from controllers.loading_view_controller import LoadingViewController
 
 
 class LoadingView(QWidget):
-    def __init__(self, index):
+    def __init__(self, size_index, polyomino_size_index):
         super().__init__()
-        self.controller = LoadingViewController(self, index)
+        self.controller = LoadingViewController(self, size_index, polyomino_size_index)
         loading_message = QLabel("Loading...")
         layout = QVBoxLayout()
         layout.setAlignment(Qt.AlignCenter)
