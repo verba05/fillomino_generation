@@ -195,7 +195,6 @@ class GameBoardController:
                             assumptions_array.append(random_cell)
                             break
                         if different_cells == []:
-                            print("problem")
                             isBoardFoundable = False
                             break
 
@@ -288,8 +287,6 @@ class GameBoardController:
                     queue.put((x, y - 1))
                     polyomino.append(x * self.j + y - 1)
                     was_visited[x * self.j + y - 1] = True
-
-            print(polyomino)
 
             if len(polyomino) < int(self.view.cells[i].text()):
                 for index in polyomino:

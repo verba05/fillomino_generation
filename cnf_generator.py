@@ -1,8 +1,15 @@
 import ast
+import os
+import sys
 
 from pysat.solvers import Minisat22
 
 class CNFGenerator:
+
+    def polyominos_path(self):
+        if hasattr(sys, '_MEIPASS'):
+            return os.path.join(sys._MEIPASS, "polyominos.txt")
+        return os.path.join(os.path.abspath("."), "polyominos.txt")
 
     def normalize_polyomino(self, polyomino):
         min_x = min(cell[0] for cell in polyomino)
@@ -93,7 +100,7 @@ class CNFGenerator:
                 solver.add_clause(clause)
                 clause.clear()
 
-        polyominos_file = open("polyominos.txt", "r")
+        polyominos_file = open(self.polyominos_path(), "r")
         for k in range(6, max_k + 1):
             number_of_polyominoes = int(polyominos_file.readline())
             shapes = []
