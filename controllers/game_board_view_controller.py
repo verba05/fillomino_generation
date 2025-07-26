@@ -195,7 +195,6 @@ class GameBoardController:
                             assumptions_array.append(random_cell)
                             break
                         if different_cells == []:
-                            print("problem")
                             isBoardFoundable = False
                             break
 
