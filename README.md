@@ -1,4 +1,4 @@
-# 🧩 Fillomino Puzzle Game
+# Fillomino Puzzle Game
 
 Fillomino is a logic puzzle where the goal is to divide a grid into **polyominoes** — connected groups of cells — such that:
 - Each group contains exactly as many cells as the number it displays.
@@ -8,7 +8,7 @@ This app provides an interactive way to play Fillomino puzzles, with boards gene
 
 ---
 
-## 📖 About the Application
+## About the Application
 
 This Fillomino puzzle game generates boards by encoding the puzzle rules into logical formulas solved by a SAT solver. The solver finds valid solutions that satisfy all puzzle constraints, ensuring each generated board has a unique and correct solution.
 
@@ -16,7 +16,16 @@ To handle complex shapes—especially large polyominoes—some patterns were pre
 
 ---
 
-## 🎮 How to Play
+## How to Start
+
+To start the game just run the `run.sh` script.
+
+```bash
+chmod +x run.sh
+sudo ./run.sh
+```
+
+## How to Play
 
 1. **Start Screen**  
    - Select the **board size** and **maximum polyomino size** from dropdown menus (default values are smallest possible).  
